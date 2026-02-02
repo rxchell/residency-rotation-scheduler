@@ -75,6 +75,8 @@ type BlockMap = Record<number, ResidentHistory>;
 
 interface Props {
   resident: Resident;
+  pinnedBlocks: number[];
+  onTogglePinBlock: (blockNumber: number) => void;
   onPrev: () => void;
   onNext: () => void;
   disablePrev: boolean;
@@ -84,6 +86,8 @@ interface Props {
 
 const ResidentTimetable: React.FC<Props> = ({
   resident,
+  pinnedBlocks,
+  onTogglePinBlock,
   onPrev,
   onNext,
   disablePrev,
@@ -247,6 +251,8 @@ const ResidentTimetable: React.FC<Props> = ({
       "text-sm",
       fulfilled ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
     );
+
+  const isPinned = (blockNumber: number) => pinnedBlocks.includes(blockNumber);
 
   // define current evolving state for current year block postings
   const [currentYearBlockPostings, setCurrentYearBlockPostings] =
@@ -618,6 +624,8 @@ const ResidentTimetable: React.FC<Props> = ({
                           postingAssignment={postingAssignment}
                           edited={editedBlocks.has(blockNumber)}
                           postingMap={postingMap}
+                          isPinned={isPinned(blockNumber)}
+                          onTogglePin={() => onTogglePinBlock(blockNumber)}
                           onSelectPosting={(code) =>
                             handleSelectPosting(blockNumber, code)
                           }

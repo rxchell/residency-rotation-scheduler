@@ -50,6 +50,10 @@ export interface ResidentHistory {
   leave_type: string;
 }
 
+export interface PinnedBlocksByResident {
+  [mcr: string]: number[]; // block numbers, e.g. [1, 4, 7]
+};
+
 export interface ResidentPreference {
   mcr: string;
   preference_rank: number;

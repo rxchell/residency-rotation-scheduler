@@ -8,6 +8,7 @@ import type {
   CsvFilesState,
   Resident,
   Weightages,
+  PinnedBlocksByResident
 } from "../types";
 
 import CohortStatistics from "../components/CohortStatistics";
@@ -64,6 +65,16 @@ const HomePage: React.FC = () => {
       return new Set<string>();
     }
   });
+
+  const [pinnedBlocksByResident, setPinnedBlocksByResident] = useState<PinnedBlocksByResident>(() => {
+    try {
+      const raw = localStorage.getItem("pinnedBlocksByResident");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
   const [currentAcademicYearInput, setCurrentAcademicYearInput] =
     useState<string>(() => {
       try {
@@ -140,6 +151,7 @@ const HomePage: React.FC = () => {
     formData.append("weightages", JSON.stringify(weightages));
     formData.append("balancing_deviations", JSON.stringify(postingDeviation));
     formData.append("pinned_mcrs", JSON.stringify(Array.from(pinnedMcrs.values())));
+    formData.append("pinned_blocks_by_resident", JSON.stringify(pinnedBlocksByResident));
     formData.append("max_time_in_minutes", maxTimeInMinutes.toString());
 
     try {
@@ -227,6 +239,15 @@ const HomePage: React.FC = () => {
       );
     } catch {}
   }, [pinnedMcrs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "pinnedBlocksByResident",
+        JSON.stringify(pinnedBlocksByResident)
+      );
+    } catch {}
+  }, [pinnedBlocksByResident]);
 
   useEffect(() => {
     try {
@@ -400,6 +421,24 @@ const HomePage: React.FC = () => {
           {selectedResidentData && (
             <ResidentTimetable
               resident={selectedResidentData}
+              pinnedBlocks={
+                pinnedBlocksByResident[selectedResidentData.mcr] ?? []
+              }
+              onTogglePinBlock={(blockNumber) => {
+                const mcr = selectedResidentData.mcr;
+
+                setPinnedBlocksByResident((prev) => {
+                  const current = new Set(prev[mcr] ?? []);
+                  current.has(blockNumber)
+                    ? current.delete(blockNumber)
+                    : current.add(blockNumber);
+
+                  return {
+                    ...prev,
+                    [mcr]: Array.from(current),
+                  };
+                });
+              }}
               onPrev={goPrev}
               onNext={goNext}
               disablePrev={disablePrev}

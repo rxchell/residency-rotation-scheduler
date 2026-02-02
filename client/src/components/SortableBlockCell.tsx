@@ -6,6 +6,7 @@ import type { Posting, ResidentHistory } from "../types";
 import { cn } from "@/lib/utils";
 import { CCR_POSTINGS } from "@/lib/constants";
 
+import { PinOffIcon } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { TableCell } from "./ui/table";
@@ -25,6 +26,8 @@ interface SortableBlockCellProps {
   postingAssignment?: ResidentHistory;
   edited: boolean;
   postingMap: Record<string, Posting>;
+  isPinned: boolean;
+  onTogglePin: ()=> void;
   onSelectPosting?: (code: string) => void;
 }
 
@@ -33,6 +36,8 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
   postingAssignment,
   edited,
   postingMap,
+  isPinned,
+  onTogglePin,
   onSelectPosting,
 }) => {
   const [open, setOpen] = useState<boolean>(false);
@@ -57,7 +62,7 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
   } = useSortable({
     id: blockNumber.toString(),
     animateLayoutChanges: () => false,
-    disabled: Boolean(isLeave),
+    disabled: Boolean(isLeave || isPinned),
   });
 
   const sortableListeners = isLeave ? undefined : listeners;
@@ -80,10 +85,11 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
   return (
     <TableCell
       className={cn(
-        "text-center bg-blue-100 hover:bg-blue-200",
-        edited && "bg-yellow-100 hover:bg-yellow-200",
+        "relative text-center bg-blue-100 hover:bg-blue-200",
+        edited && !isPinned && "bg-yellow-100 hover:bg-yellow-200",
         isOver && "bg-blue-200",
-        isLeave && "bg-gray-200 hover:bg-gray-300"
+        isLeave && "bg-gray-200 hover:bg-gray-300",
+        isPinned && "ring-1 ring-amber-400"
       )}
     >
       <div
@@ -97,11 +103,13 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
           isDragging && !isLeave && "cursor-grabbing"
         )}
       >
+        {/* LEAVE BLOCK */}
         {isLeave ? (
           <div className="flex items-center justify-center">
             <p className="font-medium text-sm text-gray-700">{leavePosting}</p>
           </div>
         ) : (
+          /* NORMAL / PINNED BLOCK */
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
               <div className="flex items-center justify-center">
@@ -117,7 +125,19 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
             <PopoverContent className="w-[260px] p-0">
               <Command>
                 <div className="flex justify-between items-center pr-2">
-                  <CommandInput placeholder="Search by code or type..." />
+                  <CommandInput placeholder="Search code" />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isPinned ? "secondary" : "outline"}
+                    onClick={() => {
+                      onTogglePin();
+                      setOpen(false);
+                    }}
+                    className="shrink-0"
+                  >
+                    {isPinned ? "Unpin block" : "Pin block"}
+                  </Button>
                   <Button
                     type="button"
                     size="icon"
@@ -230,6 +250,17 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
             </Badge>
           )}
         </div>
+        {/*UNPIN ACTION (VISIBLE WHEN PINNED) */}
+        {isPinned && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="mx-auto mt-1 h-6 w-6"
+            onClick={onTogglePin}
+          >
+            <PinOffIcon className="h-4 w-4 text-red" />
+          </Button>
+        )}
       </div>
     </TableCell>
   );
