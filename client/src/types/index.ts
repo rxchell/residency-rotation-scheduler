@@ -50,8 +50,14 @@ export interface ResidentHistory {
   leave_type: string;
 }
 
-export interface PinnedBlocksByResident {
-  [mcr: string]: number[]; // block numbers, e.g. [1, 4, 7]
+export interface PinnedAssignment {
+  mcr: string;
+  month_block: number;
+  posting_code: string;
+};
+
+export interface PinnedAssignmentsByResident {
+  [mcr: string]: PinnedAssignment[];
 };
 
 export interface ResidentPreference {

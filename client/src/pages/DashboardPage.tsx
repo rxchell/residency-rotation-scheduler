@@ -8,7 +8,8 @@ import type {
   CsvFilesState,
   Resident,
   Weightages,
-  PinnedBlocksByResident
+  PinnedAssignmentsByResident,
+  PinnedAssignment
 } from "../types";
 
 import CohortStatistics from "../components/CohortStatistics";
@@ -66,7 +67,7 @@ const HomePage: React.FC = () => {
     }
   });
 
-  const [pinnedBlocksByResident, setPinnedBlocksByResident] = useState<PinnedBlocksByResident>(() => {
+  const [pinnedBlocksByResident, setPinnedBlocksByResident] = useState<PinnedAssignmentsByResident>(() => {
     try {
       const raw = localStorage.getItem("pinnedBlocksByResident");
       return raw ? JSON.parse(raw) : {};
@@ -153,6 +154,8 @@ const HomePage: React.FC = () => {
     formData.append("pinned_mcrs", JSON.stringify(Array.from(pinnedMcrs.values())));
     formData.append("pinned_blocks_by_resident", JSON.stringify(pinnedBlocksByResident));
     formData.append("max_time_in_minutes", maxTimeInMinutes.toString());
+    console.log("pinnedBlocksByResident")
+    console.log(pinnedBlocksByResident)
 
     try {
       const json: ApiResponse = await solve(formData);
@@ -422,20 +425,42 @@ const HomePage: React.FC = () => {
             <ResidentTimetable
               resident={selectedResidentData}
               pinnedBlocks={
-                pinnedBlocksByResident[selectedResidentData.mcr] ?? []
+                (pinnedBlocksByResident[selectedResidentData.mcr] ?? []).map(
+                  (p) => p.month_block
+                )
               }
-              onTogglePinBlock={(blockNumber) => {
+              onTogglePinBlock={(blockNumber, postingCode) => {
                 const mcr = selectedResidentData.mcr;
 
                 setPinnedBlocksByResident((prev) => {
-                  const current = new Set(prev[mcr] ?? []);
-                  current.has(blockNumber)
-                    ? current.delete(blockNumber)
-                    : current.add(blockNumber);
+                  const current = prev[mcr] ?? [];
+
+                  const exists = current.some(
+                    (p) =>
+                      p.month_block === blockNumber &&
+                      p.posting_code === postingCode
+                  );
+
+                  const updated: PinnedAssignment[] = exists
+                    ? current.filter(
+                        (p) =>
+                          !(
+                            p.month_block === blockNumber &&
+                            p.posting_code === postingCode
+                          )
+                      )
+                    : [
+                        ...current,
+                        {
+                          mcr,
+                          month_block: blockNumber,
+                          posting_code: postingCode,
+                        },
+                      ];
 
                   return {
                     ...prev,
-                    [mcr]: Array.from(current),
+                    [mcr]: updated,
                   };
                 });
               }}

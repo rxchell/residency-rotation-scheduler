@@ -76,7 +76,7 @@ type BlockMap = Record<number, ResidentHistory>;
 interface Props {
   resident: Resident;
   pinnedBlocks: number[];
-  onTogglePinBlock: (blockNumber: number) => void;
+  onTogglePinBlock: (blockNumber: number, postingCode: string) => void;
   onPrev: () => void;
   onNext: () => void;
   disablePrev: boolean;
@@ -625,7 +625,7 @@ const ResidentTimetable: React.FC<Props> = ({
                           edited={editedBlocks.has(blockNumber)}
                           postingMap={postingMap}
                           isPinned={isPinned(blockNumber)}
-                          onTogglePin={() => onTogglePinBlock(blockNumber)}
+                          onTogglePin={(postingCode) => onTogglePinBlock(blockNumber, postingCode)}
                           onSelectPosting={(code) =>
                             handleSelectPosting(blockNumber, code)
                           }

@@ -27,7 +27,7 @@ interface SortableBlockCellProps {
   edited: boolean;
   postingMap: Record<string, Posting>;
   isPinned: boolean;
-  onTogglePin: ()=> void;
+  onTogglePin: (postingCode: string) => void;
   onSelectPosting?: (code: string) => void;
 }
 
@@ -131,10 +131,10 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
                     size="sm"
                     variant={isPinned ? "secondary" : "outline"}
                     onClick={() => {
-                      onTogglePin();
+                      if (!code) return;
+                      onTogglePin(code);
                       setOpen(false);
                     }}
-                    className="shrink-0"
                   >
                     {isPinned ? "Unpin block" : "Pin block"}
                   </Button>
@@ -256,7 +256,10 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
             size="icon"
             variant="ghost"
             className="mx-auto mt-1 h-6 w-6"
-            onClick={onTogglePin}
+            onClick={() => {
+              if(!code) return; 
+              onTogglePin(code)
+            }}
           >
             <PinOffIcon className="h-4 w-4 text-red" />
           </Button>
