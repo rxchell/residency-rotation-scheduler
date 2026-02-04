@@ -68,12 +68,13 @@ const HomePage: React.FC = () => {
   });
 
   const [pinnedBlocksByResident, setPinnedBlocksByResident] = useState<PinnedAssignmentsByResident>(() => {
-    try {
-      const raw = localStorage.getItem("pinnedBlocksByResident");
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
+    return {}
+    // try {
+    //   const raw = localStorage.getItem("pinnedBlocksByResident");
+    //   return raw ? JSON.parse(raw) : {};
+    // } catch {
+    //   return {};
+    // }
   });
 
   const [currentAcademicYearInput, setCurrentAcademicYearInput] =
@@ -435,28 +436,26 @@ const HomePage: React.FC = () => {
                 setPinnedBlocksByResident((prev) => {
                   const current = prev[mcr] ?? [];
 
-                  const exists = current.some(
-                    (p) =>
-                      p.month_block === blockNumber &&
-                      p.posting_code === postingCode
+                  const index = current.findIndex(
+                    (p) => p.month_block === blockNumber
                   );
 
-                  const updated: PinnedAssignment[] = exists
-                    ? current.filter(
-                        (p) =>
-                          !(
-                            p.month_block === blockNumber &&
-                            p.posting_code === postingCode
-                          )
-                      )
-                    : [
-                        ...current,
-                        {
-                          mcr,
-                          month_block: blockNumber,
-                          posting_code: postingCode,
-                        },
-                      ];
+                  let updated: PinnedAssignment[];
+
+                  if (index >= 0) {
+                    // UNPIN
+                    updated = current.filter((_, i) => i !== index);
+                  } else {
+                    // PIN (cache current posting code)
+                    updated = [
+                      ...current,
+                      {
+                        mcr,
+                        month_block: blockNumber,
+                        posting_code: postingCode ?? null,
+                      },
+                    ];
+                  }
 
                   return {
                     ...prev,

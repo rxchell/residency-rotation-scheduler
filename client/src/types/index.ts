@@ -53,7 +53,7 @@ export interface ResidentHistory {
 export interface PinnedAssignment {
   mcr: string;
   month_block: number;
-  posting_code: string;
+  posting_code: string | null;
 };
 
 export interface PinnedAssignmentsByResident {

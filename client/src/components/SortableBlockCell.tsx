@@ -256,10 +256,7 @@ const SortableBlockCell: React.FC<SortableBlockCellProps> = ({
             size="icon"
             variant="ghost"
             className="mx-auto mt-1 h-6 w-6"
-            onClick={() => {
-              if(!code) return; 
-              onTogglePin(code)
-            }}
+            onClick={() => onTogglePin(code || "")}
           >
             <PinOffIcon className="h-4 w-4 text-red" />
           </Button>
