@@ -70,7 +70,9 @@ async def solve(request: Request):
         # parse form data
         form = await request.form()
 
-        # prepare solver input
+        print("store.latest_api_response", store.latest_api_response)
+
+        # prepare input to solver
         solver_input, latest_inputs_snapshot = await prepare_solver_input(
             form=form,
             latest_inputs=store.latest_inputs,

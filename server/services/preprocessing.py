@@ -174,6 +174,32 @@ def parse_int(value: Any) -> Optional[int]:
         return None
     return result
 
+def parse_optimized_years(raw_values: List[str]) -> List[int]:
+    """
+    Normalize and parse optimized_years from form data.
+    Handles common frontend mistakes like sending '[]', '', 'null', etc.
+    Returns empty list if no valid years are provided.
+    Raises HTTPException if invalid non-empty values are sent.
+    """
+    if not raw_values:
+        return []
+
+    # Clean and filter out junk
+    cleaned = [v.strip() for v in raw_values if v is not None and v.strip()]
+
+    # Treat these as explicitly empty
+    if not cleaned or cleaned in [["[]"], [""], ["null"], ["[] "]]:  # allow some whitespace
+        return []
+
+    # Try to parse as integers
+    try:
+        years = [int(v) for v in cleaned]
+        return years
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"optimized_years must be empty or contain valid integers. Got: {raw_values!r}"
+        )
 
 def parse_max_time_in_minutes(raw: Any) -> Optional[int]:
     value = parse_int(raw)
@@ -659,8 +685,113 @@ def _validate_posting_capacity_and_duration(postings: List[Dict[str, Any]]) -> N
             detail=f"[{label}] Invalid required_block_duration for posting(s): {joined}. Value must be between 1 and 12 months.",
         )
 
+########################################################################
+# Helpers for filtering data in CSV files based on resident year
+########################################################################
+def filter_residents_by_year(
+    residents: List[Dict[str, Any]],
+    target_year: int
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """
+    Filters formatted residents to only those with the specified resident_year.
+    
+    Returns:
+        (filtered_residents_list, list_of_matching_mcrs)
+    """
+    filtered = []
+    mcrs = []
+    
+    for resident in residents:
+        ry = resident.get("resident_year")
+        mcr = resident.get("mcr", "").strip()
+        
+        if mcr and isinstance(ry, int) and ry == target_year:
+            filtered.append(resident)
+            mcrs.append(mcr)
+    
+    return filtered, mcrs
 
-async def preprocess_initial_upload(form: FormData) -> Dict[str, Any]:
+
+def filter_by_mcrs(
+    data: List[Dict[str, Any]],
+    allowed_mcrs: List[str]
+) -> List[Dict[str, Any]]:
+    """
+    Keeps only rows from formatted data where mcr is in allowed_mcrs.
+    """
+    allowed = set(allowed_mcrs) 
+    return [
+        row for row in data
+        if row.get("mcr", "").strip() in allowed
+    ]
+
+def filter_data_for_residency_year(
+    residents: List[Dict[str, Any]],
+    resident_history: List[Dict[str, Any]],
+    resident_preferences: List[Dict[str, Any]],
+    resident_sr_preferences: List[Dict[str, Any]],
+    target_year: int
+) -> Tuple[
+    List[Dict[str, Any]],           # filtered residents
+    List[Dict[str, Any]],           # filtered history
+    List[Dict[str, Any]],           # filtered preferences
+    List[Dict[str, Any]],           # filtered sr_preferences
+    List[str]                       
+]:
+    """
+    Filters all relevant datasets to include only residents of the target year.
+    
+    Returns:
+        (filtered_residents, filtered_history, filtered_prefs, filtered_sr_prefs, mcrs)
+    """
+    print(f"filtering from {len(residents)} residents for target_year: {target_year}")
+    filtered_residents, mcrs = filter_residents_by_year(residents, target_year)
+    
+    if not mcrs:
+        return [], [], [], [], []
+    
+    allowed_mcrs_set = set(mcrs)
+    
+    filtered_history = filter_by_mcrs(resident_history, allowed_mcrs_set)
+    filtered_prefs = filter_by_mcrs(resident_preferences, allowed_mcrs_set)
+    filtered_sr_prefs = filter_by_mcrs(resident_sr_preferences, allowed_mcrs_set)
+    
+    return (
+        filtered_residents,
+        filtered_history,
+        filtered_prefs,
+        filtered_sr_prefs,
+        mcrs
+    )
+
+########################################################################
+# Preprocessing functions 
+########################################################################
+async def preprocess_initial_upload(form: FormData) -> Dict[str, Any]: 
+    print("preprocess_initial_upload called")
+    target_year_raw = form.get("target_year")
+    optimized_years_raw: List[str] = form.getlist("optimized_years")
+
+    try:
+        target_year = int(target_year_raw.strip()) if target_year_raw else None
+    except (ValueError, AttributeError, TypeError):
+        target_year = None
+
+    if target_year is None:
+        raise HTTPException(400, "target_year is required and must be an integer")
+    if target_year != 3:
+        raise HTTPException(400, f"target_year must be 3 for initial upload, got {target_year}")
+
+    optimized_years = parse_optimized_years(optimized_years_raw)
+    if optimized_years:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"For initial upload, optimized_years must be empty. "
+                f"Got: {optimized_years}"
+            )
+        )
+
     def require_upload(key: str, optional: bool = False) -> Optional[UploadFile]:
         value = form.get(key)
         if isinstance(value, UploadFile):
@@ -714,6 +845,16 @@ async def preprocess_initial_upload(form: FormData) -> Dict[str, Any]:
     postings = _format_postings(postings_csv)
     resident_leaves = _derive_resident_leaves_from_history(resident_history)
 
+    print(f"Total residents before filtering: {len(residents)}")
+    filtered_residents, filtered_history, filtered_prefs, filtered_sr_prefs, mcrs = filter_data_for_residency_year(
+        residents,
+        resident_history,
+        resident_preferences,
+        resident_sr_preferences,
+        target_year=3
+    )
+    print(f"Residents after filtering for target_year=3: {len(filtered_residents)}")
+
     posting_codes = {p["posting_code"] for p in postings if p["posting_code"]}
     _validate_residents_strict(residents)
     _validate_postings_strict(postings)
@@ -730,15 +871,20 @@ async def preprocess_initial_upload(form: FormData) -> Dict[str, Any]:
     max_time_in_minutes = parse_max_time_in_minutes(form.get("max_time_in_minutes"))
 
     return {
-        "residents": residents,
-        "resident_history": resident_history,
-        "resident_preferences": resident_preferences,
-        "resident_sr_preferences": resident_sr_preferences,
+        "residents": filtered_residents,
+        "resident_history": filtered_history,
+        "resident_preferences": filtered_prefs,
+        "resident_sr_preferences": filtered_sr_prefs,
         "postings": postings,
         "weightages": weightages,
         "balancing_deviations": balancing_deviations,
         "resident_leaves": resident_leaves,
         "max_time_in_minutes": max_time_in_minutes,
+        # Preserve full data for later filtering in pinned runs
+        "full_residents": residents,  
+        "full_resident_history": resident_history,
+        "full_resident_preferences": resident_preferences,
+        "full_resident_sr_preferences": resident_sr_preferences
     }
 
 
@@ -754,22 +900,24 @@ async def prepare_solver_input(
     print("in prepare_solver_input")
     pinned_mcrs = parse_pinned_list(form.get("pinned_mcrs"))
     has_pinned = bool(pinned_mcrs)
-    has_cached_run = bool(latest_api_response)
+    api_response_cache = form.get("api_response_cache")
+    has_cached_run = bool(latest_api_response or api_response_cache)
 
     if has_pinned and has_cached_run:
         solver_input = build_pinned_run_input(
             latest_inputs=latest_inputs,
-            latest_api_response=latest_api_response,
+            latest_api_response=latest_api_response or api_response_cache,
             pinned_mcrs=pinned_mcrs,
+            target_year=form.get("target_year"),
+            optimized_years=form.get("optimized_years"),
             weightages_override=form.get("weightages"),
             balancing_deviations=form.get("balancing_deviations"),
-            max_time_in_minutes=form.get("max_time_in_minutes"),
+            max_time_in_minutes=form.get("max_time_in_minutes")
         )
-        latest_inputs_snapshot: Optional[Dict[str, Any]] = None
     else:
         solver_input = await preprocess_initial_upload(form)
-        latest_inputs_snapshot = copy.deepcopy(solver_input)
-
+    
+    latest_inputs_snapshot = copy.deepcopy(solver_input)
     return solver_input, latest_inputs_snapshot
 
 
@@ -777,6 +925,8 @@ def build_pinned_run_input(
     latest_inputs: Optional[Dict[str, Any]],
     latest_api_response: Optional[Dict[str, Any]],
     pinned_mcrs: List[str],
+    target_year: int,
+    optimized_years: List[int],
     weightages_override: Any = None,
     balancing_deviations: Any = None,
     max_time_in_minutes: Any = None,
@@ -786,7 +936,12 @@ def build_pinned_run_input(
             status_code=400,
             detail="No existing timetable found. Upload CSV files before pinning residents.",
         )
-
+    if not latest_inputs:
+        raise HTTPException(
+            status_code=400,
+            detail="No existing inputs found. Upload CSV files before pinning residents.",
+        )
+    print(f"Building pinned run input with target_year: {target_year}, optimized_years: {optimized_years}")
     pinned_set = {mcr for mcr in pinned_mcrs if mcr}
     history = latest_api_response.get("resident_history") or []
     resident_history = [
@@ -832,6 +987,27 @@ def build_pinned_run_input(
     )
     weightages = parse_weightages(weightages_override, base_weightages)
 
+    # Get full dataset from latest_inputs to filter down to target_year
+    def get_full(key: str) -> List[Dict]:
+        full_key = f"full_{key}"
+        if latest_inputs and full_key in latest_inputs and latest_inputs[full_key]:
+            return copy.deepcopy(latest_inputs[full_key])
+        return []
+    full_residents = get_full("residents")
+    full_history = get_full("resident_history")
+    full_prefs = get_full("resident_preferences")
+    full_sr_prefs = get_full("resident_sr_preferences")
+        
+    print("Number of residents before filtering", len(full_residents))
+    filtered_residents, filtered_history, filtered_prefs, filtered_sr_prefs, _ = filter_data_for_residency_year(
+        residents=full_residents,
+        resident_history=full_history,
+        resident_preferences=full_prefs,
+        resident_sr_preferences=full_sr_prefs,
+        target_year=target_year
+    )
+    print("Number of residents after filtering", len(filtered_residents))
+
     def merged(key: str) -> List[Dict[str, Any]]:
         if latest_api_response and key in latest_api_response:
             return copy.deepcopy(latest_api_response.get(key) or [])
@@ -859,11 +1035,17 @@ def build_pinned_run_input(
             "leave_type": str(row.get("leave_type") or "").strip(),
         }
 
+    final_residents = filtered_residents + merged("residents")
+    print("Final residents count after merging", len(final_residents))
+    final_history = filtered_history + merged("resident_history")
+    final_prefs = filtered_prefs + merged("resident_preferences")
+    final_sr_prefs = filtered_sr_prefs + merged("resident_sr_preferences")
+
     return {
-        "residents": merged("residents"),
-        "resident_history": resident_history,
-        "resident_preferences": merged("resident_preferences"),
-        "resident_sr_preferences": merged("resident_sr_preferences"),
+        "residents": final_residents,
+        "resident_history": final_history,
+        "resident_preferences": final_prefs,
+        "resident_sr_preferences": final_sr_prefs,
         "postings": merged("postings"),
         "weightages": weightages,
         "balancing_deviations": balancing_deviations,
