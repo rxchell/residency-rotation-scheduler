@@ -91,7 +91,7 @@ const HomePage: React.FC = () => {
   const nextYear = hasR3 ? (hasR2 ? 1 : 2) : 3;
 
   // Handler for year-specific generation
-  const handleGenerateForYear = async (year: number, isFullReset: boolean = false) => {
+  const handleGenerateForYear = async (year: number) => {
     setIsProcessing(true);
     setError(null);
 
@@ -107,7 +107,7 @@ const HomePage: React.FC = () => {
     formData.append("balancing_deviations", JSON.stringify(postingDeviation));
     formData.append("pinned_mcrs", JSON.stringify(Array.from(pinnedMcrs.values())));
     formData.append("max_time_in_minutes", maxTimeInMinutes.toString());
-
+    formData.append("api_response_cache", JSON.stringify(apiResponse));
     // Sequential timetable generation for a specific R3/R2/R1 year
     formData.append("target_year", year.toString());
     formData.append("optimized_years", JSON.stringify(Array.from(optimizedYears)));
@@ -116,14 +116,7 @@ const HomePage: React.FC = () => {
       const json: ApiResponse = await solve(formData);
       if (json.success && json.residents) {
         setApiResponse(json);
-        
-        if (!isFullReset) {
-          // Normal sequential step — add the year
-          setOptimizedYears(prev => new Set([...prev, year]));
-        } else {
-          // Full reset — clear state (or set only this year if backend re-did everything)
-          setOptimizedYears(new Set([year]));
-        }
+        setOptimizedYears(prev => new Set([...prev, year]));
       }
     } catch (err: any) {
       setError(
@@ -138,7 +131,7 @@ const HomePage: React.FC = () => {
   // For initial generation and reset
   const handleFullGenerate = async () => {
     setOptimizedYears(new Set([])); // reset progress
-    await handleGenerateForYear(3, true); // start with R3, full reset
+    await handleGenerateForYear(3); // start with R3
   };
 
   const handleFileUpload =
@@ -261,7 +254,9 @@ const HomePage: React.FC = () => {
         "pinnedMcrs",
         JSON.stringify(Array.from(pinnedMcrs.values()))
       );
-    } catch {}
+    } catch (e) {
+      console.error("Failed to save pinnedMcrs to localStorage:", e);
+    }
   }, [pinnedMcrs]);
 
   useEffect(() => {
@@ -356,7 +351,12 @@ const HomePage: React.FC = () => {
         {/* Always available: Initial generation and reset */}
         <Button
           variant={apiResponse ? "outline" : "default"}
-          onClick={handleFullGenerate}
+          onClick={() => {
+            handleFullGenerate();
+            if (apiResponse) {
+              setPinnedMcrs(new Set()); // reset pinned MCRs on full regenerate
+            }
+          }}
           disabled={
             isProcessing ||
             (!apiResponse &&
@@ -369,8 +369,8 @@ const HomePage: React.FC = () => {
             !apiResponse && "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
           )}
         >
-          {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" /> Generating...</>}
-          {apiResponse ? "Reset & Re-Generate Timetable" : "Upload & Generate Timetable"}
+          {isProcessing ? <><Loader2Icon className="animate-spin mr-2 h-4 w-4" /> Generating...</>
+           : apiResponse ? "Reset & Re-Generate Timetable" : "Upload & Generate Timetable"}
         </Button>
 
         {/* Sequential / regenerate buttons: only shown when there is a timetable */}
@@ -393,9 +393,9 @@ const HomePage: React.FC = () => {
                   className="bg-blue-600 hover:bg-blue-700 text-white min-w-[220px]"
                 >
                   {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" /> Generating...</>}
-                  {currentStage === 0 && "Generate for R3"} 
-                  {currentStage === 1 && "Generate for R2"} 
-                  {currentStage === 2 && "Generate for R1"} 
+                  {!isProcessing && currentStage === 0 && "Generate for R3"} 
+                  {!isProcessing && currentStage === 1 && "Generate for R2"} 
+                  {!isProcessing && currentStage === 2 && "Generate for R1"} 
                 </Button>  
               </>  
             )}
@@ -411,13 +411,13 @@ const HomePage: React.FC = () => {
                     pinAllYear(3);
                     pinAllYear(2);
                   }
-                  handleGenerateForYear(currentStage === 2 ? 2 : 1, false)
+                  handleGenerateForYear(currentStage === 2 ? 2 : 1)
                 }}
                 disabled={isProcessing}
                 className="min-w-[200px]"
               >
                 {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" />Regenerating...</>}
-                Regenerate {currentStage === 2 ? "R2" : "R1"}  
+                {!isProcessing && `Regenerate ${currentStage === 2 ? "R2" : "R1"}`}
               </Button>
             )}
           </>
