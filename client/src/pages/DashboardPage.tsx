@@ -72,6 +72,72 @@ const HomePage: React.FC = () => {
         return "";
       }
     });
+  
+  // Tracks which years (R3, R2, R1) have been generated in the timetable
+  const [optimizedYears, setOptimizedYears] = useState<Set<number>>(new Set([]));
+
+  // Reset when no timetable exists (fresh upload needed)
+  useEffect(() => {
+    if (!apiResponse) {
+      setOptimizedYears(new Set([]));
+    }
+  }, [apiResponse]);
+
+  const hasR3 = optimizedYears.has(3);
+  const hasR2 = optimizedYears.has(2);
+  const currentStage = optimizedYears.size;
+  const nextYear = hasR3 ? (hasR2 ? 1 : 2) : 3;
+
+  // Handler for year-specific generation
+  const handleGenerateForYear = async (year: number, isFullReset: boolean = false) => {
+    setIsProcessing(true);
+    setError(null);
+
+    const formData = new FormData();
+
+    // Always include uploaded files if they exist
+    Object.entries(csvFiles).forEach(([key, file]) => {
+      if (file) formData.append(key, file);
+    });
+
+    // include weightages and pinned residents
+    formData.append("weightages", JSON.stringify(weightages));
+    formData.append("balancing_deviations", JSON.stringify(postingDeviation));
+    formData.append("pinned_mcrs", JSON.stringify(Array.from(pinnedMcrs.values())));
+    formData.append("max_time_in_minutes", maxTimeInMinutes.toString());
+
+    // Sequential timetable generation for a specific R3/R2/R1 year
+    formData.append("target_year", year.toString());
+    formData.append("optimized_years", JSON.stringify(Array.from(optimizedYears)));
+
+    try {
+      const json: ApiResponse = await solve(formData);
+      if (json.success && json.residents) {
+        setApiResponse(json);
+        
+        if (!isFullReset) {
+          // Normal sequential step — add the year
+          setOptimizedYears(prev => new Set([...prev, year]));
+        } else {
+          // Full reset — clear state (or set only this year if backend re-did everything)
+          setOptimizedYears(new Set([year]));
+        }
+      }
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.detail ||
+          "An error occurred while processing the files."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // For initial generation and reset
+  const handleFullGenerate = async () => {
+    setOptimizedYears(new Set([])); // reset progress
+    await handleGenerateForYear(3, true); // start with R3, full reset
+  };
 
   const handleFileUpload =
     (fileType: keyof typeof csvFiles) =>
@@ -123,38 +189,6 @@ const HomePage: React.FC = () => {
       },
       error: () => setError(`Failed to parse ${fileType} CSV.`),
     });
-  };
-
-  const handleProcessFiles = async () => {
-    setIsProcessing(true);
-    setError(null);
-
-    const formData = new FormData();
-
-    // if CSVs present, always include them, else omit
-    Object.entries(csvFiles).forEach(([key, file]) => {
-      if (file) formData.append(key, file);
-    })
-    
-    // include weightages and pinned residents
-    formData.append("weightages", JSON.stringify(weightages));
-    formData.append("balancing_deviations", JSON.stringify(postingDeviation));
-    formData.append("pinned_mcrs", JSON.stringify(Array.from(pinnedMcrs.values())));
-    formData.append("max_time_in_minutes", maxTimeInMinutes.toString());
-
-    try {
-      const json: ApiResponse = await solve(formData);
-      if (json.success && json.residents) {
-        setApiResponse(json);
-      }
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.detail ||
-          "An error occurred while processing the files."
-      );
-    } finally {
-      setIsProcessing(false);
-    }
   };
 
   const selectedResidentData = apiResponse?.residents?.find(
@@ -326,8 +360,10 @@ const HomePage: React.FC = () => {
 
       {/* Buttons */}
       <div className="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-center items-center">
+        {/* Always available: Initial generation and reset */}
         <Button
-          onClick={handleProcessFiles}
+          variant={apiResponse ? "outline" : "default"}
+          onClick={handleFullGenerate}
           disabled={
             isProcessing ||
             (!apiResponse &&
@@ -335,20 +371,48 @@ const HomePage: React.FC = () => {
                 !csvFiles.resident_preferences ||
                 !csvFiles.resident_history ||
                 !csvFiles.postings))
-          }
-          className="bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
-        >
-          {isProcessing ? (
-            <>
-              <Loader2Icon className="animate-spin" />
-              Generating...
-            </>
-          ) : apiResponse ? (
-            "Re-Generate Timetable"
-          ) : (
-            "Upload & Generate Timetable"
+          }            
+          className={cn(
+            !apiResponse && "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
           )}
+        >
+          {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" /> Generating...</>}
+          {apiResponse ? "Reset & Re-Generate Timetable" : "Upload & Generate Timetable"}
         </Button>
+
+        {/* Sequential / regenerate buttons: only shown when there is a timetable */}
+        {apiResponse && (
+          <>
+            {/* Button for generating timetable for the next year */}
+            {currentStage <= 3 && (
+              <>
+                <Button
+                  onClick={() => handleGenerateForYear(nextYear)}
+                  disabled={isProcessing}
+                  className="bg-blue-600 hover:bg-blue-700 text-white min-w-[220px]"
+                >
+                  {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" /> Generating...</>}
+                  {currentStage === 0 && "Generate for R3"}
+                  {currentStage === 1 && "Generate for R2"}
+                  {currentStage === 2 && "Generate for R1"}
+                </Button>  
+              </>  
+            )}
+
+            {/* Regenerate the most recently optimized year */}
+            {currentStage >= 2 && (
+              <Button
+                variant="secondary"
+                onClick={() => handleGenerateForYear(currentStage === 2 ? 2 : 1, false)}
+                disabled={isProcessing}
+                className="min-w-[200px]"
+              >
+                {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" />Regenerating...</>}
+                Regenerate {currentStage === 2 ? "R2" : "R1"}
+              </Button>
+            )}
+          </>
+        )}
         <Button
           variant="secondary"
           onClick={generateSampleCSV}
