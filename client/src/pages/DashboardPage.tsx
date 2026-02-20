@@ -20,6 +20,7 @@ import ResidentTimetable from "../components/ResidentTimetable";
 import WeightageSelector from "../components/WeightageSelector";
 import { generateSampleCSV } from "../lib/generateSampleCSV";
 import { validators } from "../lib/csvValidators";
+import { useResidentPinning } from "@/hooks/use-resident-pinning";
 
 import {
   cn,
@@ -64,6 +65,7 @@ const HomePage: React.FC = () => {
       return new Set<string>();
     }
   });
+  const { pinAllYear, togglePin } = useResidentPinning(apiResponse?.residents, pinnedMcrs, setPinnedMcrs);
   const [currentAcademicYearInput, setCurrentAcademicYearInput] =
     useState<string>(() => {
       try {
@@ -268,15 +270,6 @@ const HomePage: React.FC = () => {
     } catch {}
   }, [currentAcademicYearInput]);
 
-  const togglePin = (mcr: string) => {
-    setPinnedMcrs((prev) => {
-      const next = new Set(prev);
-      if (next.has(mcr)) next.delete(mcr);
-      else next.add(mcr);
-      return next;
-    });
-  };
-
   return (
     <div className="container mx-auto bg-white rounded-xl border p-8 flex flex-col gap-6">
       <h1 className="text-2xl font-semibold text-center mb-6 text-gray-800">
@@ -387,14 +380,22 @@ const HomePage: React.FC = () => {
             {currentStage <= 3 && (
               <>
                 <Button
-                  onClick={() => handleGenerateForYear(nextYear)}
+                  onClick={() => {
+                    if (currentStage === 1) {
+                      pinAllYear(3);     // pin all R3 before generating R2
+                    } else if (currentStage === 2) {
+                      pinAllYear(3);
+                      pinAllYear(2);     // pin R3 + R2 before generating R1
+                    }
+                    handleGenerateForYear(nextYear);
+                  }}
                   disabled={isProcessing}
                   className="bg-blue-600 hover:bg-blue-700 text-white min-w-[220px]"
                 >
                   {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" /> Generating...</>}
-                  {currentStage === 0 && "Generate for R3"}
-                  {currentStage === 1 && "Generate for R2"}
-                  {currentStage === 2 && "Generate for R1"}
+                  {currentStage === 0 && "Generate for R3"} 
+                  {currentStage === 1 && "Generate for R2"} 
+                  {currentStage === 2 && "Generate for R1"} 
                 </Button>  
               </>  
             )}
@@ -403,12 +404,20 @@ const HomePage: React.FC = () => {
             {currentStage >= 2 && (
               <Button
                 variant="secondary"
-                onClick={() => handleGenerateForYear(currentStage === 2 ? 2 : 1, false)}
+                onClick={() => {
+                  if (currentStage === 2) {
+                    pinAllYear(3);
+                  } else if (currentStage === 3) {
+                    pinAllYear(3);
+                    pinAllYear(2);
+                  }
+                  handleGenerateForYear(currentStage === 2 ? 2 : 1, false)
+                }}
                 disabled={isProcessing}
                 className="min-w-[200px]"
               >
                 {isProcessing && <><Loader2Icon className="animate-spin mr-2 h-4 w-4" />Regenerating...</>}
-                Regenerate {currentStage === 2 ? "R2" : "R1"}
+                Regenerate {currentStage === 2 ? "R2" : "R1"}  
               </Button>
             )}
           </>

@@ -1,9 +1,7 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useApiResponseContext } from "@/context/ApiResponseContext";
 import { downloadCsv } from "@/api/api";
-import { groupResidentsByYear } from "@/lib/residentOrdering";
-import type { Resident } from "@/types";
-
+import { useResidentPinning } from "@/hooks/use-resident-pinning";
 import PlanningOverviewTable from "../components/PlanningOverviewTable";
 import ErrorAlert from "../components/ErrorAlert";
 import { Button } from "@/components/ui/button";
@@ -25,6 +23,12 @@ const OverviewPage: React.FC = () => {
     }
   });
 
+  const {
+    togglePin,
+    pinAllYear,
+    unpinAllYear
+  } = useResidentPinning(apiResponse?.residents, pinnedMcrs, setPinnedMcrs);
+
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -33,41 +37,6 @@ const OverviewPage: React.FC = () => {
       );
     } catch {}
   }, [pinnedMcrs]);
-
-  const groupedResidents = useMemo(
-    () =>
-      apiResponse?.residents
-        ? groupResidentsByYear(apiResponse.residents as Resident[])
-        : ({} as Record<number, Resident[]>),
-    [apiResponse?.residents]
-  );
-
-  const togglePin = (mcr: string) => {
-    setPinnedMcrs((prev) => {
-      const next = new Set(prev);
-      if (next.has(mcr)) next.delete(mcr);
-      else next.add(mcr);
-      return next;
-    });
-  };
-
-  const pinAllYear = (year: number) => {
-    const list = groupedResidents[year] || [];
-    setPinnedMcrs((prev) => {
-      const next = new Set(prev);
-      list.forEach((r) => next.add(r.mcr));
-      return next;
-    });
-  };
-
-  const unpinAllYear = (year: number) => {
-    const list = groupedResidents[year] || [];
-    setPinnedMcrs((prev) => {
-      const next = new Set(prev);
-      list.forEach((r) => next.delete(r.mcr));
-      return next;
-    });
-  };
 
   const handleDownloadCSV = async () => {
     if (!apiResponse) {
